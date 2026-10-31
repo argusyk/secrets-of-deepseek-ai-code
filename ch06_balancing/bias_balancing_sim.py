@@ -62,6 +62,12 @@ def v3_route(s, b, k):
     return mask, g / g.sum(axis=1, keepdims=True)
 
 
+def update_bias(b, mask, gamma):
+    """Overloaded experts get a lower bias, underloaded ones a higher one."""
+    load = mask.sum(axis=0)
+    return b + gamma * np.sign(load.mean() - load)
+
+
 def run(strategy, alpha=0.0, gamma=0.002, seed=0):
     rng = np.random.default_rng(seed)
     centers = rng.standard_normal((C, D))
@@ -88,8 +94,7 @@ def run(strategy, alpha=0.0, gamma=0.002, seed=0):
         E += LR * g.T @ X
 
         if strategy == "bias":                       # no gradient, just a rule
-            load = mask.sum(axis=0)
-            b += gamma * np.sign(load.mean() - load)
+            b = update_bias(b, mask, gamma)
 
         if step >= STEPS - TAIL:
             vio.append(max_violation(mask))
