@@ -1,7 +1,7 @@
 """FP8 (E4M3 / E5M2) emulation in NumPy: per-tensor vs fine-grained scaling.
 
-Teaching code for Chapter 10 of "Secrets of DeepSeek AI". We enumerate every
-value an 8-bit float can hold, round real numbers to the nearest one, and
+Toy implementation for Chapter 10 of "Secrets of DeepSeek AI" (Listing 10.1).
+We enumerate every value an 8-bit float can hold, round real numbers to the nearest one, and
 compare two ways of choosing the scale factor:
 
   * per-tensor  - one scale for the whole matrix (classic FP8 recipe);
@@ -48,12 +48,15 @@ def quantize(x, grid, scale):
 
 
 def per_tensor(x, grid):
+    """One scale for the whole tensor, formula (10.3)."""
     s = np.max(np.abs(x)) / grid[-1]
+    if s == 0:                                         # all-zero tensor
+        s = 1.0
     return quantize(x, grid, s)
 
 
 def per_tile(x, grid, tile=128):
-    """Activations: one scale per row-segment of `tile` channels (1 x 128)."""
+    """Activations: one scale per 1 x `tile` segment, formula (10.4)."""
     out = np.empty_like(x)
     for j in range(0, x.shape[1], tile):
         blk = x[:, j:j + tile]

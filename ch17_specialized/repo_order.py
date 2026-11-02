@@ -10,7 +10,6 @@ Run:
     python repo_order.py
 """
 import re
-from collections import defaultdict
 
 IMPORT_RE = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.M)
 
@@ -31,23 +30,19 @@ def dependencies(files: dict[str, str]) -> dict[str, set[str]]:
 
 
 def repo_order(files: dict[str, str]) -> list[str]:
-    deps = dependencies(files)
+    deps = dependencies(files)              # file -> local imports
     remaining = {f: set(d) for f, d in deps.items()}
-    users = defaultdict(set)
-    for f, ds in deps.items():
-        for d in ds:
-            users[d].add(f)
     order = []
     while remaining:
         ready = sorted(f for f, d in remaining.items() if not d)
-        if not ready:                                   # a cycle: break it
-            ready = [min(remaining, key=lambda f: (len(remaining[f]), f))]
+        if not ready:                       # a cycle: break it
+            ready = [min(remaining,
+                         key=lambda f: (len(remaining[f]), f))]
         for f in ready:
             order.append(f)
             remaining.pop(f)
-            for u in users[f]:
-                if u in remaining:
-                    remaining[u].discard(f)
+            for d in remaining.values():
+                d.discard(f)
     return order
 
 

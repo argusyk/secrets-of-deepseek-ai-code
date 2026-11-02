@@ -3,7 +3,7 @@
 Chapter 6 of "Secrets of DeepSeek AI". A router with N experts sends each
 token to its top-K experts. Tokens come from 8 topical clusters. The router's
 expert embeddings are trained to raise the affinity of the chosen experts
-(a stand-in for the language-modelling objective). On its own this drives
+(a stand-in for the language-modeling objective). On its own this drives
 routing collapse: a few "loud" experts attract more tokens, receive more
 updates and become even more popular.
 
@@ -11,15 +11,21 @@ Strategies compared on identical data:
 
   none  - no balancing;
   aux   - an auxiliary balance loss  alpha * N * sum_i f_i * P_i  whose gradient
-          is added to the router (Switch/GShard style);
+          is added to the router (Switch/GShard style). Note the scale: here
+          f_i is already normalized to mean 1 (multiplied by N/K), so the
+          effective weight is about N times larger than alpha in the V3
+          notation of formula (6.6). Do not compare alpha = 0.1...10 below
+          with V3's alpha = 0.0001 directly;
   bias  - DeepSeek-V3 style: a per-expert bias b_i is added to the affinity
           ONLY when choosing the top-K experts; it moves by +/- gamma according
           to the observed load and never receives a gradient.
 
+Listing 6.1 of the book shows topk_mask, v3_route and update_bias.
+
 Metrics, averaged over the last TAIL steps:
   MaxVio = (max_i load_i - mean load) / mean load       (lower = more balanced)
   purity = share of each expert's tokens that come from its dominant cluster,
-           load-weighted (higher = more specialised experts)
+           load-weighted (higher = more specialized experts)
 
 Run:
     python bias_balancing_sim.py
@@ -56,7 +62,7 @@ def purity(mask, cluster):
 
 
 def v3_route(s, b, k):
-    """DeepSeek-V3 gating: select by s + b, weight by the raw s (normalised)."""
+    """DeepSeek-V3 gating: select by s + b, weight by the raw s (normalized)."""
     mask = topk_mask(s + b, k)
     g = s * mask
     return mask, g / g.sum(axis=1, keepdims=True)
@@ -88,7 +94,7 @@ def run(strategy, alpha=0.0, gamma=0.002, seed=0):
         if strategy == "aux":
             f = mask.mean(axis=0) * N / K           # load fraction
             S = s.sum(axis=1, keepdims=True)
-            sp = s / S                              # normalised affinities
+            sp = s / S                              # normalized affinities
             ds = (f - (sp * f).sum(axis=1, keepdims=True)) / S
             g = g - alpha * N * ds * s * (1 - s) / T  # descent on aux loss
         E += LR * g.T @ X

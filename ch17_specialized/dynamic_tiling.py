@@ -38,7 +38,8 @@ def choose_grid(width: int, height: int, max_tiles: int = 9):
 
 
 def visual_tokens(m: int, n: int, tokens_per_tile: int = 196) -> int:
-    """Local tiles plus one global thumbnail; tokens_per_tile is illustrative."""
+    """Local tiles plus one global thumbnail; DeepSeek-VL2 compresses each
+    tile to 196 tokens (14 x 14 after 2 x 2 merging)."""
     return (m * n + 1) * tokens_per_tile
 
 

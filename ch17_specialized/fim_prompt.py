@@ -25,7 +25,8 @@ def psm_prompt(prefix: str, suffix: str) -> str:
     return f"{FIM_BEGIN}{prefix}{FIM_HOLE}{suffix}{FIM_END}"
 
 
-def split_at_cursor(source: str, cursor: int, selection_end: int | None = None):
+def split_at_cursor(source: str, cursor: int,
+                    selection_end: int | None = None):
     """Editor view: text before the cursor is the prefix, text after the
     (optional) selection is the suffix; the selection itself is to be rewritten."""
     end = cursor if selection_end is None else selection_end

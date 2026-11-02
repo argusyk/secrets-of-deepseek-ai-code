@@ -1,11 +1,15 @@
-"""KV-cache memory for MHA, GQA, MQA and MLA as a function of context length.
+"""KV-cache capacity planning: cache per token and Little's law.
 
-Teaching calculator for Chapter 15 of "Secrets of DeepSeek AI". It answers two
-practical questions: how many bytes one token of context costs in the cache,
-and how many concurrent sequences of a given length fit into a memory budget.
-The MLA row uses DeepSeek-V3's latent (512) plus decoupled RoPE key (64)
-per layer; the other rows reuse V3's layer count and head geometry so the
-comparison isolates the attention scheme.
+Teaching calculator for Chapter 15 of "Secrets of DeepSeek AI". The cache
+formulas themselves are those of Chapter 4 ((4.1), (4.10), Table 4.1); this
+script answers the serving questions of Section 15.6: how many sequences are
+in the system at once (Little's law, formula (15.7)) and how much memory
+their caches need. The MLA row uses DeepSeek-V3's latent (512) plus
+decoupled RoPE key (64) per layer; the other rows reuse V3's layer count and
+head geometry so the comparison isolates the attention scheme.
+
+Units: cache sizes are printed in binary units (KiB, GiB = 2**30 bytes) as in
+Chapter 4; memory budgets of accelerators are decimal GB (10**9 bytes).
 
 Run:
     python kv_cache_calc.py
@@ -45,12 +49,22 @@ def max_sequences(kind, context, budget_gb, **kw):
     return int(budget_gb * 1e9 // cache_bytes(kind, context, **kw))
 
 
+def in_flight(rate, seconds):
+    """Little's law (15.7): mean number of requests in the system."""
+    return rate * seconds
+
+
+def cache_for_traffic(kind, rate, seconds, context, **kw):
+    """Bytes of KV cache for the sequences that are in flight at once."""
+    return cache_bytes(kind, context, batch=in_flight(rate, seconds), **kw)
+
+
 def human(n):
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1000:
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if n < 1024:
             return f"{n:7.1f} {unit}"
-        n /= 1000
-    return f"{n:7.1f} PB"
+        n /= 1024
+    return f"{n:7.1f} PiB"
 
 
 if __name__ == "__main__":
@@ -59,16 +73,18 @@ if __name__ == "__main__":
     for k in kinds:
         print(f"  {k:4s} {human(bytes_per_token(k))}")
 
-    print("\nCache for one sequence:")
-    print("  ctx      " + "".join(f"{k:>12s}" for k in kinds))
-    for ctx in (4_096, 32_768, 131_072):
-        row = "".join(f"{human(cache_bytes(k, ctx)):>12s}" for k in kinds)
-        print(f"  {ctx:7d}  {row}")
-
-    budget = 400  # GB of accelerator memory left for the cache
+    budget = 400  # GB of accelerator memory left for the cache (decimal)
     print(f"\nConcurrent 128K-token sessions in a {budget} GB cache budget:")
     for k in kinds:
         print(f"  {k:4s} {max_sequences(k, 131_072, budget):5d}")
+
+    rate, seconds, ctx = 20, 15, 8_192
+    n = in_flight(rate, seconds)
+    print(f"\nLittle's law: {rate} req/s x {seconds} s = {n:.0f} sequences"
+          f" of {ctx} tokens in flight")
+    for k in ("GQA", "MLA"):
+        b = cache_for_traffic(k, rate, seconds, ctx)
+        print(f"  {k:4s} {human(b)} = {b / 1e9:6.1f} GB")
 
     ratio = bytes_per_token("MHA") / bytes_per_token("MLA")
     print(f"\nMHA / MLA cache ratio: {ratio:.1f}x")

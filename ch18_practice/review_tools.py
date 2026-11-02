@@ -14,15 +14,30 @@ import ast
 import json
 import os
 
-SANDBOX = os.path.abspath(os.path.dirname(__file__))
+SANDBOX = os.path.realpath(os.path.dirname(__file__))
+MAX_BYTES = 200_000                      # a review tool reads source files
 
 
 def _safe_read(path):
-    full = os.path.abspath(os.path.join(SANDBOX, path))
+    # realpath also resolves symbolic links that point outside the sandbox
+    full = os.path.realpath(os.path.join(SANDBOX, path))
     if not full.startswith(SANDBOX + os.sep):
         raise PermissionError(f"path outside sandbox: {path}")
+    if os.path.getsize(full) > MAX_BYTES:
+        raise ValueError(f"file too large for review: {path}")
     with open(full, encoding="utf-8") as f:
         return f.read()
+
+
+def sandbox_relpath(path):
+    """Path of a file given on the command line, relative to SANDBOX.
+    Raises ValueError if the file is missing or lies outside the sandbox."""
+    full = os.path.realpath(path)
+    if not os.path.isfile(full):
+        raise ValueError(f"no such file: {path}")
+    if not full.startswith(SANDBOX + os.sep):
+        raise ValueError(f"file must be inside the sandbox {SANDBOX}")
+    return os.path.relpath(full, SANDBOX)
 
 
 def list_functions(path):

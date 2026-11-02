@@ -12,9 +12,14 @@ It follows the MLA equations of DeepSeek-V2/V3:
     score = (q_C . k_C + q_R . k_R) / sqrt(d_h + d_hR)
 
 The "naive" form materialises full keys and values for every head.
-The "absorbed" form never does: W_UK is folded into the query and
-W_UV into the output projection, so attention runs directly over the
-cached latent c_KV. Both forms must give the same output.
+The "absorbed" form never does: W_UK is folded into the query,
+q_C . (W_UK c) = (W_UK^T q_C) . c, and W_UV is folded into the output
+projection, so attention runs directly over the cached latent c_KV.
+Both forms must give the same output.
+
+Simplification: in DeepSeek-V2/V3 the latents c_KV and c_Q additionally
+pass through RMSNorm before the up-projections. The norm does not change
+the dimensions or the absorption argument, so it is omitted here.
 
 Run:
     python mla_numpy.py
@@ -85,22 +90,22 @@ def mla_absorbed(H, P):
     """Attend over the cached latent only; W_UK and W_UV are absorbed."""
     seq = H.shape[0]
     pos = np.arange(seq, dtype=float)
-    cache_c = H @ P["W_DKV"].T                        # (seq, d_c)   <- KV cache
-    cache_kR = rope(H @ P["W_KR"].T, pos)             # (seq, d_hR)  <- KV cache
-    c_q = H @ P["W_DQ"].T
+    W_UK, W_UV, W_UQ = P["W_UK"], P["W_UV"], P["W_UQ"]
+    W_QR, W_O = P["W_QR"], P["W_O"]
+    cache_c = H @ P["W_DKV"].T                # (seq, d_c)   <- KV cache
+    cache_kR = rope(H @ P["W_KR"].T, pos)     # (seq, d_hR)  <- KV cache
+    c_q = H @ P["W_DQ"].T                     # (seq, d_cq)
     scale = 1.0 / np.sqrt(P["d_h"] + P["d_hR"])
     out = np.zeros_like(H)
     for i in range(P["n_h"]):
-        # fold W_UK into the query: q_C . (W_UK c) = (W_UK^T q_C) . c
-        W_q_absorbed = P["W_UK"][i].T @ P["W_UQ"][i]  # (d_c, d_cq), precomputable
-        q_lat = c_q @ W_q_absorbed.T                  # (seq, d_c)
-        q_R = rope(c_q @ P["W_QR"][i].T, pos)
+        W_q_abs = W_UK[i].T @ W_UQ[i]         # (d_c, d_cq), precomputed
+        q_lat = c_q @ W_q_abs.T               # query in latent space
+        q_R = rope(c_q @ W_QR[i].T, pos)      # positional part of query
         s = (q_lat @ cache_c.T + q_R @ cache_kR.T) * scale
         s = np.where(causal_mask(seq), -np.inf, s)
-        o_lat = softmax(s) @ cache_c                  # (seq, d_c): mix latents
-        # fold W_UV into the output projection: W_O,i W_UV,i
-        W_o_absorbed = P["W_O"][:, i, :] @ P["W_UV"][i]  # (d, d_c), precomputable
-        out += o_lat @ W_o_absorbed.T
+        o_lat = softmax(s) @ cache_c          # weight latents, not values
+        W_o_abs = W_O[:, i, :] @ W_UV[i]      # (d, d_c), precomputed
+        out += o_lat @ W_o_abs.T
     return out
 
 

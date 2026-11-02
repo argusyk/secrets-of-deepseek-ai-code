@@ -1,7 +1,7 @@
 """The learning-rate and batch-size schedule of DeepSeek-V3 pre-training.
 
-Chapter 9 of "Secrets of DeepSeek AI". The constants follow the DeepSeek-V3
-technical report [1]: linear warm-up to 2.2e-4 over 2K steps, constant until
+Chapter 9 of "Secrets of DeepSeek AI" (Listing 9.2). The constants follow
+the DeepSeek-V3 technical report [1]: linear warm-up to 2.2e-4 over 2K steps, constant until
 10T tokens, cosine decay to 2.2e-5 by 14.3T, then 2.2e-5 for 333B tokens and
 7.3e-6 for the last 167B; the batch grows from 3072 to 15360 sequences of
 4096 tokens during the first 469B tokens. The ramp shapes (linear batch growth
@@ -34,7 +34,8 @@ def learning_rate(step, tokens_seen):
         return PEAK_LR
     if tokens_seen < COS_END:                            # cosine decay
         p = (tokens_seen - CONST_END) / (COS_END - CONST_END)
-        return MID_LR + 0.5 * (PEAK_LR - MID_LR) * (1 + math.cos(math.pi * p))
+        cos = 0.5 * (1 + math.cos(math.pi * p))
+        return MID_LR + (PEAK_LR - MID_LR) * cos
     if tokens_seen < MID_END:                            # 2.2e-5 for 333B tokens
         return MID_LR
     return FINAL_LR                                      # 7.3e-6 for 167B tokens
